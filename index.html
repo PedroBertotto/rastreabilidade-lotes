@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rastreabilidade de Lotes</title>
+<meta name="description" content="Consulta pública do histórico de lotes registrados em blockchain (protótipo de TCC – UNOCHAPECÓ).">
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.17.0/dist/ethers.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style>
+  :root{
+    --bg:#f6f5f0; --card:#ffffff; --ink:#1f2a1f; --muted:#5d6b5d; --line:#dfe3d8;
+    --brand:#2f6b3a; --brand-ink:#ffffff; --brand-soft:#e6f0e3;
+    --ok:#1f7a3a; --ok-soft:#e3f3e6; --bad:#a3271f; --bad-soft:#fbe7e5;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#141813; --card:#1d221c; --ink:#e7ece4; --muted:#9fab9c; --line:#2f362d;
+      --brand:#7cc489; --brand-ink:#0f1a10; --brand-soft:#223325;
+      --ok:#7cd395; --ok-soft:#1d3323; --bad:#f08a80; --bad-soft:#3a201d;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#141813; --card:#1d221c; --ink:#e7ece4; --muted:#9fab9c; --line:#2f362d;
+    --brand:#7cc489; --brand-ink:#0f1a10; --brand-soft:#223325;
+    --ok:#7cd395; --ok-soft:#1d3323; --bad:#f08a80; --bad-soft:#3a201d;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{background:var(--brand);color:var(--brand-ink);padding:20px 16px}
+  header .wrap{display:flex;align-items:center;gap:12px}
+  header h1{margin:0;font-size:1.25rem;letter-spacing:.2px}
+  header p{margin:2px 0 0;opacity:.85;font-size:.9rem}
+  .wrap{max-width:820px;margin:0 auto}
+  main{padding:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  h2{font-size:1.05rem;margin:0 0 12px}
+  label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:4px}
+  input[type=text],select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+  input.mono{font-family:var(--mono);font-size:.85rem}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .row>*{flex:1 1 220px}
+  button{background:var(--brand);color:var(--brand-ink);border:0;border-radius:8px;padding:10px 16px;font:inherit;font-weight:600;cursor:pointer}
+  button.sec{background:transparent;color:var(--brand);border:1px solid var(--brand)}
+  .status{font-size:.9rem;color:var(--muted);margin-top:8px;min-height:1.4em}
+  dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:0}
+  dt{color:var(--muted);font-size:.9rem}
+  dd{margin:0;word-break:break-all}
+  .tag{display:inline-block;background:var(--brand-soft);color:var(--brand);border-radius:999px;padding:2px 10px;font-size:.8rem;font-weight:600}
+  ol.timeline{list-style:none;margin:0;padding:0;position:relative}
+  ol.timeline::before{content:"";position:absolute;left:11px;top:6px;bottom:6px;width:2px;background:var(--line)}
+  ol.timeline li{position:relative;padding:0 0 18px 36px}
+  ol.timeline li::before{content:attr(data-n);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:var(--brand);color:var(--brand-ink);font-size:.75rem;font-weight:700;display:grid;place-items:center}
+  .ev-top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+  .ev-desc{margin:4px 0}
+  .small{font-size:.8rem;color:var(--muted)}
+  .hash{font-family:var(--mono);font-size:.75rem;color:var(--muted);word-break:break-all}
+  a{color:var(--brand)}
+  .result{border-radius:8px;padding:10px 12px;margin-top:10px;font-weight:600}
+  .result.ok{background:var(--ok-soft);color:var(--ok)}
+  .result.bad{background:var(--bad-soft);color:var(--bad)}
+  #qr svg, #qr img{width:200px;height:200px;background:#fff;padding:8px;border-radius:8px}
+  .arquivo{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0;color:var(--ink);font-size:.9rem}
+  .arquivo input{position:absolute;opacity:0;width:1px;height:1px}
+  .arquivo .btn-arq{border:1px solid var(--brand);color:var(--brand);border-radius:8px;padding:7px 12px;font-weight:600;font-size:.9rem;cursor:pointer;white-space:nowrap}
+  .arquivo .nome{color:var(--muted);font-size:.85rem;word-break:break-all}
+  .hidden{display:none}
+  details summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+  footer{color:var(--muted);font-size:.8rem;text-align:center;padding:8px 16px 24px}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="3" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><rect x="18" y="3" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><rect x="3" y="18" width="11" height="11" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M14 8.5h4M8.5 14v4M18 23.5h7M23.5 18v4" stroke="currentColor" stroke-width="2.2"/></svg>
+    <div>
+      <h1>Rastreabilidade de Lotes</h1>
+      <p>Consulta pública do histórico registrado em blockchain</p>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card">
+    <h2>Consultar lote</h2>
+    <label for="lote">Identificador do lote</label>
+    <input id="lote" type="text" class="mono" placeholder="0x…">
+    <div class="row" style="margin-top:12px">
+      <button id="btnConsultar">Consultar histórico</button>
+    </div>
+    <details style="margin-top:12px">
+      <summary>Configuração da rede</summary>
+      <div class="row" style="margin-top:8px">
+        <div><label for="rede">Rede</label>
+          <select id="rede"><option value="sepolia">Ethereum Sepolia (testnet)</option><option value="local">Local (Hardhat – 127.0.0.1:8545)</option></select></div>
+        <div><label for="contrato">Endereço do contrato</label>
+          <input id="contrato" type="text" class="mono" placeholder="0x…"></div>
+      </div>
+    </details>
+    <div id="status" class="status" role="status"></div>
+  </section>
+
+  <section id="secLote" class="card hidden">
+    <h2>Dados do lote <span id="tipo" class="tag"></span></h2>
+    <dl>
+      <dt>Código interno</dt><dd id="codigo"></dd>
+      <dt>Data de produção</dt><dd id="dataProd"></dd>
+      <dt>Registrado em</dt><dd id="registrado"></dd>
+      <dt>Produtor (carteira)</dt><dd id="produtor" class="hash"></dd>
+    </dl>
+  </section>
+
+  <section id="secHist" class="card hidden">
+    <h2>Histórico da cadeia</h2>
+    <ol id="timeline" class="timeline"></ol>
+  </section>
+
+  <section id="secVerif" class="card hidden">
+    <h2>Verificar documento (auditoria)</h2>
+    <p class="small">Selecione o arquivo recebido (laudo, GTA, nota). O arquivo <b>não sai do seu computador</b>: o navegador calcula a impressão digital (hash keccak256) e compara com a que foi gravada na blockchain.</p>
+    <div class="row">
+      <div><label for="evSel">Etapa do histórico</label><select id="evSel"></select></div>
+      <div><label>Arquivo</label><label class="arquivo"><input id="arq" type="file"><span class="btn-arq">Selecionar arquivo</span><span class="nome">nenhum arquivo selecionado</span></label></div>
+    </div>
+    <div id="verifRes"></div>
+  </section>
+
+  <section id="secQr" class="card hidden">
+    <h2>QR Code do lote</h2>
+    <p class="small">Para impressão na embalagem ou etiqueta. Ao ser lido por um celular, abre esta consulta já com o lote preenchido.</p>
+    <div id="qr"></div>
+    <div class="row" style="margin-top:12px"><button id="btnBaixarQr" class="sec">Baixar QR Code (PNG)</button></div>
+  </section>
+
+</main>
+
+<footer>Protótipo acadêmico – TCC II, Sistemas de Informação, UNOCHAPECÓ. Dados de teste, sem valor comercial.</footer>
+
+<script>
+const RPC = { sepolia: "https://ethereum-sepolia-rpc.publicnode.com", local: "http://127.0.0.1:8545" };
+const EXPLORER = { sepolia: "https://sepolia.etherscan.io", local: null };
+const ABI = [
+  "function consultarLote(bytes32 id) view returns (tuple(bytes32 id,string codigoInterno,string tipoProduto,address produtor,uint64 dataProducao,uint64 registradoEm,bool existe))",
+  "function consultarHistorico(bytes32 id) view returns (tuple(uint8 etapa,bytes32 hashDados,string descricao,address responsavel,uint64 timestamp)[])",
+  "function verificarDocumento(bytes32 id,uint256 indiceEvento,bytes32 hashCalculado) view returns (bool)"
+];
+const ETAPAS = ["Produção / alojamento", "Sanitário", "Transporte", "Recebimento", "Processamento / abate", "Expedição"];
+const ZERO = "0x" + "0".repeat(64);
+const $ = (id) => document.getElementById(id);
+let contrato, historico = [];
+
+const fmt = (ts) => new Date(Number(ts) * 1000).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+const curto = (h) => h.slice(0, 10) + "…" + h.slice(-8);
+
+function lerParametros() {
+  const p = new URLSearchParams(location.search);
+  if (p.get("rede")) $("rede").value = p.get("rede");
+  if (p.get("contrato")) $("contrato").value = p.get("contrato");
+  if (p.get("lote")) $("lote").value = p.get("lote");
+  return !!(p.get("contrato") && p.get("lote"));
+}
+
+async function consultar() {
+  const rede = $("rede").value, end = $("contrato").value.trim(), id = $("lote").value.trim();
+  ["secLote", "secHist", "secVerif", "secQr"].forEach((s) => $(s).classList.add("hidden"));
+  if (!ethers.isAddress(end)) return status("Informe o endereço do contrato em “Configuração da rede”.");
+  if (!/^0x[0-9a-fA-F]{64}$/.test(id)) return status("Identificador inválido: deve começar com 0x e ter 64 caracteres hexadecimais.");
+  status("Consultando a blockchain…");
+  try {
+    const provider = new ethers.JsonRpcProvider(RPC[rede]);
+    contrato = new ethers.Contract(end, ABI, provider);
+    const lote = await contrato.consultarLote(id);
+    historico = await contrato.consultarHistorico(id);
+    mostrarLote(lote); mostrarHistorico(rede); prepararVerificacao(); gerarQr(rede, end, id);
+    status(`Consulta concluída: ${historico.length} registro(s) encontrados. Nenhuma carteira ou taxa foi necessária.`);
+  } catch (e) {
+    status(/Lote inexistente/.test(e.message) ? "Lote não encontrado neste contrato." : "Não foi possível consultar: " + (e.shortMessage || e.message));
+  }
+}
+function status(t) { $("status").textContent = t; }
+
+function mostrarLote(l) {
+  $("tipo").textContent = l.tipoProduto;
+  $("codigo").textContent = l.codigoInterno;
+  $("dataProd").textContent = fmt(l.dataProducao);
+  $("registrado").textContent = fmt(l.registradoEm);
+  $("produtor").textContent = l.produtor;
+  $("secLote").classList.remove("hidden");
+}
+
+function mostrarHistorico(rede) {
+  const ol = $("timeline"); ol.innerHTML = "";
+  historico.forEach((e, i) => {
+    const li = document.createElement("li"); li.dataset.n = i + 1;
+    const temDoc = e.hashDados !== ZERO;
+    li.innerHTML = `<div class="ev-top"><strong>${ETAPAS[Number(e.etapa)] ?? "Etapa " + e.etapa}</strong><span class="small">${fmt(e.timestamp)}</span></div>
+      <p class="ev-desc"></p>
+      <div class="hash">Documento: ${temDoc ? curto(e.hashDados) : "não anexado"}</div>
+      <div class="small">Registrado por ${EXPLORER[rede] ? `<a target="_blank" rel="noopener" href="${EXPLORER[rede]}/address/${e.responsavel}">${curto(e.responsavel)}</a>` : curto(e.responsavel)}</div>`;
+    li.querySelector(".ev-desc").textContent = e.descricao; // texto vindo da blockchain inserido como texto puro
+    ol.appendChild(li);
+  });
+  $("secHist").classList.remove("hidden");
+}
+
+function prepararVerificacao() {
+  const sel = $("evSel"); sel.innerHTML = "";
+  historico.forEach((e, i) => { if (e.hashDados !== ZERO) sel.add(new Option(`${i + 1}. ${ETAPAS[Number(e.etapa)]} – ${e.descricao.slice(0, 40)}`, i)); });
+  $("verifRes").innerHTML = "";
+  if (sel.options.length) $("secVerif").classList.remove("hidden");
+}
+
+async function hashArquivo(file) { return ethers.keccak256(new Uint8Array(await file.arrayBuffer())); }
+
+$("arq").addEventListener("change", async (ev) => {
+  const f = ev.target.files[0]; if (!f) return;
+  const h = await hashArquivo(f);
+  const ok = await contrato.verificarDocumento($("lote").value.trim(), Number($("evSel").value), h);
+  $("verifRes").innerHTML = ok
+    ? `<div class="result ok">✓ Documento autêntico: idêntico ao registrado na blockchain.</div>`
+    : `<div class="result bad">✗ Documento diferente do registrado: pode ter sido alterado.</div>`;
+  $("verifRes").insertAdjacentHTML("beforeend", `<div class="hash" style="margin-top:6px">Hash calculado: ${h}</div>`);
+});
+
+let urlQr = "";
+function gerarQr(rede, end, id) {
+  const base = location.href.split("?")[0];
+  urlQr = `${base}?rede=${rede}&contrato=${end}&lote=${id}`;
+  const qr = qrcode(0, "M"); qr.addData(urlQr); qr.make();
+  $("qr").innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  $("secQr").classList.remove("hidden");
+}
+$("btnBaixarQr").addEventListener("click", () => {
+  const qr = qrcode(0, "M"); qr.addData(urlQr); qr.make();
+  const a = document.createElement("a"); a.href = qr.createDataURL(10, 4); a.download = "qrcode-lote.png"; a.click();
+});
+
+$("btnConsultar").addEventListener("click", consultar);
+if (lerParametros()) consultar();
+
+document.querySelectorAll(".arquivo input").forEach((i) => i.addEventListener("change", () => {
+  i.parentElement.querySelector(".nome").textContent = i.files[0] ? i.files[0].name : "nenhum arquivo selecionado";
+}));
+</script>
+</body>
+</html>
