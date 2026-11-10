@@ -152,7 +152,7 @@
 
   <section class="card" id="secTx">
     <h2>Transações desta sessão</h2>
-    <div class="tabela"><table><thead><tr><th>Operação</th><th>Data do bloco</th><th class="num">Bloco</th><th class="num">Gas</th><th>Transação</th></tr></thead><tbody id="tbTx"><tr><td colspan="5" class="small">Nenhuma transação ainda.</td></tr></tbody></table></div>
+    <div class="tabela"><table><thead><tr><th>Operação</th><th>Data do bloco</th><th class="num">Bloco</th><th class="num">Gas</th><th class="num">Tempo</th><th>Transação</th></tr></thead><tbody id="tbTx"><tr><td colspan="6" class="small">Nenhuma transação ainda.</td></tr></tbody></table></div>
   </section>
 </main>
 
@@ -244,22 +244,25 @@ async function enviar(btn, el, operacao, fn, aoConfirmar) {
   const txt = btn.textContent; btn.textContent = "Aguardando confirmação…";
   try {
     const tx = await fn();
+    const t0 = performance.now();          // transação assinada e enviada à rede
     btn.textContent = "Enviando à rede…";
     const rc = await (tx.wait ? tx.wait() : tx.deploymentTransaction().wait());
+    const segundos = (performance.now() - t0) / 1000;
     const bloco = await provider.getBlock(rc.blockNumber);
     const extra = aoConfirmar ? await aoConfirmar(rc) : [];
     resultado(el, true, `${operacao}: transação confirmada no bloco ${milhar(rc.blockNumber)}`, [
-      ...extra, ["Gas utilizado", milhar(rc.gasUsed)], ["Data do bloco", fmt(bloco.timestamp)], ["Transação", rc.hash, true]]);
-    registrarTx(operacao, bloco.timestamp, rc);
+      ...extra, ["Gas utilizado", milhar(rc.gasUsed)], ["Tempo até a confirmação", segundos.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " s"],
+      ["Data do bloco", fmt(bloco.timestamp)], ["Transação", rc.hash, true]]);
+    registrarTx(operacao, bloco.timestamp, rc, segundos);
   } catch (e) {
     resultado(el, false, `${operacao}: transação recusada`, [["Motivo", motivo(e)]]);
   } finally { btn.disabled = false; btn.textContent = txt; }
 }
 
 const txs = [];
-function registrarTx(op, ts, rc) {
-  txs.push({ op, ts, bloco: rc.blockNumber, gas: rc.gasUsed, hash: rc.hash });
-  $("tbTx").innerHTML = txs.map((t) => `<tr><td>${t.op}</td><td>${fmt(t.ts)}</td><td class="num">${milhar(t.bloco)}</td><td class="num">${milhar(t.gas)}</td><td class="hash">${link("tx", t.hash)}</td></tr>`).join("");
+function registrarTx(op, ts, rc, seg) {
+  txs.push({ op, ts, bloco: rc.blockNumber, gas: rc.gasUsed, seg, hash: rc.hash });
+  $("tbTx").innerHTML = txs.map((t) => `<tr><td>${t.op}</td><td>${fmt(t.ts)}</td><td class="num">${milhar(t.bloco)}</td><td class="num">${milhar(t.gas)}</td><td class="num">${t.seg.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} s</td><td class="hash">${link("tx", t.hash)}</td></tr>`).join("");
 }
 
 async function listarLotes() {
