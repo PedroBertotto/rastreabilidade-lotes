@@ -138,6 +138,7 @@
       <div><label>Documento da etapa (opcional)</label><label class="arquivo"><input id="docEtapa" type="file"><span class="btn-arq">Selecionar arquivo</span><span class="nome">nenhum arquivo selecionado</span></label></div>
     </div>
     <div id="hashEtapa" class="hash" style="margin-top:6px"></div>
+    <button type="button" id="btnSemDoc" class="sec" style="margin-top:8px;padding:6px 12px;font-size:.85rem">Remover documento</button>
     <label for="descricao">Descrição curta <span id="cont" class="small"></span></label>
     <input id="descricao" type="text" maxlength="120" placeholder="Ex.: Vacinação Newcastle e Gumboro - dia 14 do lote">
     <div class="acoes"><button id="btnEtapa">Registrar etapa</button></div>
@@ -281,6 +282,11 @@ function lerData(t) {
 }
 function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
 
+function limparEtapa() {
+  $("docEtapa").value = ""; hashes.etapa = ZERO; $("hashEtapa").textContent = "";
+  $("docEtapa").parentElement.querySelector(".nome").textContent = "nenhum arquivo selecionado";
+  $("descricao").value = ""; $("cont").textContent = "";
+}
 async function hashArquivo(file) { return ethers.keccak256(new Uint8Array(await file.arrayBuffer())); }
 function lerHash(input, saida, chave) {
   $(input).addEventListener("change", async (ev) => {
@@ -294,6 +300,7 @@ lerHash("docEtapa", "hashEtapa", "etapa");
 $("descricao").addEventListener("input", () => { $("cont").textContent = `(${new TextEncoder().encode($("descricao").value).length} bytes)`; });
 
 $("btnConectar").addEventListener("click", conectar);
+$("btnSemDoc").addEventListener("click", () => { $("docEtapa").value = ""; hashes.etapa = ZERO; $("hashEtapa").textContent = ""; $("docEtapa").parentElement.querySelector(".nome").textContent = "nenhum arquivo selecionado"; });
 $("contrato").addEventListener("change", async () => { if (signer) { await usarContrato(); mostrarConta(await provider.getBalance(conta)); } });
 
 $("btnImplantar").addEventListener("click", () => enviar($("btnImplantar"), "resConexao", "Implantação do contrato",
@@ -327,7 +334,11 @@ $("btnEtapa").addEventListener("click", () => {
   if (!/^0x[0-9a-fA-F]{64}$/.test(id)) return resultado("resEtapa", false, "Identificador do lote inválido");
   enviar($("btnEtapa"), "resEtapa", "Registro da etapa",
     () => contrato.registrarEvento(id, etapa, hashes.etapa, desc),
-    async () => [["Etapa", $("etapa").selectedOptions[0].text], ["Documento", hashes.etapa === ZERO ? "não anexado" : hashes.etapa, hashes.etapa !== ZERO]]);
+    async () => {
+      const linhas = [["Etapa", $("etapa").selectedOptions[0].text], ["Documento", hashes.etapa === ZERO ? "não anexado" : hashes.etapa, hashes.etapa !== ZERO]];
+      limparEtapa();   // a próxima etapa começa sem documento e sem descrição
+      return linhas;
+    });
 });
 
 const p = new URLSearchParams(location.search);
